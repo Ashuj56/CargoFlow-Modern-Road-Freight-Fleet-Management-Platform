@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: owner-portal-config
+  labels:
+    app: cargoflow-owner-portal
+data:
+  PORT: "3001"
+  VITE_API_URL: "http://backend-service:5000/api"
+  VITE_SOCKET_URL: "http://backend-service:5000"
