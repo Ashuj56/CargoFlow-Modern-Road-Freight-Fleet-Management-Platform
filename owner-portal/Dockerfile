@@ -1,19 +1,22 @@
-# Stage 1: Build stage
-FROM node:20-alpine AS Build
+FROM node:20-alpine AS build
+
 WORKDIR /app
 
 COPY package*.json ./
+
 RUN npm ci && npm cache clean --force
 
 COPY . .
+
 RUN npm run build
 
-# Stage 2: Production runtime stage
-FROM node:20-alpine AS Runner
+FROM node:20-alpine AS runner
+
 WORKDIR /app
 
 RUN npm install -g serve && npm cache clean --force
-COPY --from=Build /app/dist ./dist
+
+COPY --from=build /app/dist ./dist
 
 USER node
 EXPOSE 3001

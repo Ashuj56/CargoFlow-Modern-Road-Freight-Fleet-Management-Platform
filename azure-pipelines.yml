@@ -1,0 +1,108 @@
+trigger: none
+
+resources:
+  repositories:
+    - repository: self
+      type: git
+
+variables:
+  azureSubscription: 'cargoflow-service-connection'
+  acrName: 'cargoflowacr'
+  aksResourceGroup: 'cargoflow-rg'
+  aksClusterName: 'cargoflow-aks'
+  keyVaultName: 'cargoflow-keyvault'
+  k8sNamespace: 'default'
+
+stages:
+  - stage: DeployToAKS
+    displayName: 'Deploy to Azure Kubernetes Service'
+    jobs:
+      - deployment: DeployCargoFlow
+        displayName: 'Deploy CargoFlow (backend + portals)'
+        environment: 'production'
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - task: AzureKeyVault@2
+                  displayName: 'Fetch secrets from Azure Key Vault'
+                  inputs:
+                    azureSubscription: $(azureSubscription)
+                    KeyVaultName: $(keyVaultName)
+                    SecretsFilter: >-
+                      cargoflow-mongodb-uri,
+                      cargoflow-jwt-access-secret,
+                      cargoflow-jwt-refresh-secret,
+                      cargoflow-upstash-redis-url,
+                      cargoflow-upstash-redis-token,
+                      cargoflow-gmail-user,
+                      cargoflow-gmail-password
+                    RunAsPreJob: true
+
+                - task: AzureCLI@2
+                  displayName: 'Get AKS credentials'
+                  inputs:
+                    azureSubscription: $(azureSubscription)
+                    scriptType: bash
+                    scriptLocation: inlineScript
+                    inlineScript: |
+                      az aks get-credentials \
+                        --resource-group $(aksResourceGroup) \
+                        --name $(aksClusterName) \
+                        --overwrite-existing
+                      echo "Kubernetes context set to: $(aksClusterName)"
+                      kubectl config current-context
+
+                - script: |
+                    echo "Creating backend-secrets Kubernetes Secret..."
+                    kubectl create secret generic backend-secrets \
+                      --namespace $(k8sNamespace) \
+                      --from-literal=MONGODB_URI="$(cargoflow-mongodb-uri)" \
+                      --from-literal=JWT_ACCESS_SECRET="$(cargoflow-jwt-access-secret)" \
+                      --from-literal=JWT_REFRESH_SECRET="$(cargoflow-jwt-refresh-secret)" \
+                      --from-literal=UPSTASH_REDIS_REST_URL="$(cargoflow-upstash-redis-url)" \
+                      --from-literal=UPSTASH_REDIS_REST_TOKEN="$(cargoflow-upstash-redis-token)" \
+                      --from-literal=GMAIL_USER="$(cargoflow-gmail-user)" \
+                      --from-literal=GMAIL_APP_PASSWORD="$(cargoflow-gmail-password)" \
+                      --dry-run=client -o yaml | kubectl apply -f -
+                    echo "backend-secrets applied successfully."
+                  displayName: 'Inject Key Vault secrets into AKS'
+
+                - script: |
+                    echo "Deploying cargoflow-backend..."
+                    kubectl apply -k backend/k8s/ --namespace $(k8sNamespace)
+                    kubectl rollout status deployment/cargoflow-backend \
+                      --namespace $(k8sNamespace) \
+                      --timeout=5m
+                    echo "Backend rollout complete."
+                  displayName: 'Deploy backend to AKS'
+
+                - script: |
+                    echo "Deploying cargoflow-customer-portal..."
+                    kubectl apply -k customer-portal/k8s/ --namespace $(k8sNamespace)
+                    kubectl rollout status deployment/cargoflow-customer-portal \
+                      --namespace $(k8sNamespace) \
+                      --timeout=5m
+                    echo "Customer portal rollout complete."
+                  displayName: 'Deploy customer-portal to AKS'
+
+                - script: |
+                    echo "Deploying cargoflow-owner-portal..."
+                    kubectl apply -k owner-portal/k8s/ --namespace $(k8sNamespace)
+                    kubectl rollout status deployment/cargoflow-owner-portal \
+                      --namespace $(k8sNamespace) \
+                      --timeout=5m
+                    echo "Owner portal rollout complete."
+                  displayName: 'Deploy owner-portal to AKS'
+
+                - script: |
+                    echo "=== Pod Status ==="
+                    kubectl get pods -l app.kubernetes.io/part-of=cargoflow \
+                      --namespace $(k8sNamespace)
+                    echo ""
+                    echo "=== HPA Status ==="
+                    kubectl get hpa --namespace $(k8sNamespace)
+                    echo ""
+                    echo "=== Services ==="
+                    kubectl get services --namespace $(k8sNamespace)
+                  displayName: 'Verify deployment health'

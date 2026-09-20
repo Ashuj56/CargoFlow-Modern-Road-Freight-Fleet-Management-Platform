@@ -1,0 +1,172 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: cargoflow-alerts
+  namespace: monitoring
+  labels:
+    app: kube-prometheus-stack
+    release: monitoring
+spec:
+  groups:
+    - name: cargoflow.pods
+      interval: 30s
+      rules:
+        - alert: CargoFlowBackendHighCPU
+          expr: |
+            rate(container_cpu_usage_seconds_total{
+              namespace="default",
+              pod=~"cargoflow-backend-.*",
+              container="backend"
+            }[5m]) > 0.8
+          for: 5m
+          labels:
+            severity: warning
+            service: backend
+          annotations:
+            summary: "Backend pod CPU usage > 80%"
+            description: "Pod {{ $labels.pod }} CPU is {{ $value | humanizePercentage }}. HPA should scale automatically."
+
+        - alert: CargoFlowBackendHighMemory
+          expr: |
+            container_memory_working_set_bytes{
+              namespace="default",
+              pod=~"cargoflow-backend-.*",
+              container="backend"
+            }
+            /
+            container_spec_memory_limit_bytes{
+              namespace="default",
+              pod=~"cargoflow-backend-.*",
+              container="backend"
+            } > 0.85
+          for: 5m
+          labels:
+            severity: warning
+            service: backend
+          annotations:
+            summary: "Backend pod memory usage > 85% of limit"
+            description: "Pod {{ $labels.pod }} memory is {{ $value | humanizePercentage }} of limit."
+
+        - alert: CargoFlowPodCrashLooping
+          expr: |
+            increase(kube_pod_container_status_restarts_total{
+              namespace="default",
+              pod=~"cargoflow-.*"
+            }[15m]) > 3
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "CargoFlow pod is crash-looping"
+            description: "Pod {{ $labels.pod }} (container: {{ $labels.container }}) has restarted {{ $value }} times in the last 15 minutes."
+
+        - alert: CargoFlowPodNotReady
+          expr: |
+            kube_pod_status_ready{
+              namespace="default",
+              pod=~"cargoflow-.*",
+              condition="true"
+            } == 0
+          for: 2m
+          labels:
+            severity: critical
+          annotations:
+            summary: "CargoFlow pod not in Ready state"
+            description: "Pod {{ $labels.pod }} has been not-ready for more than 2 minutes."
+
+    - name: cargoflow.http
+      interval: 30s
+      rules:
+        - alert: CargoFlowHigh5xxRate
+          expr: |
+            rate(nginx_ingress_controller_requests{
+              status=~"5..",
+              ingress=~"cargoflow-.*"
+            }[5m])
+            /
+            rate(nginx_ingress_controller_requests{
+              ingress=~"cargoflow-.*"
+            }[5m]) > 0.01
+          for: 2m
+          labels:
+            severity: critical
+          annotations:
+            summary: "HTTP 5xx error rate exceeded 1%"
+            description: "The 5xx error rate for CargoFlow is {{ $value | humanizePercentage }}. Investigate backend logs immediately."
+
+        - alert: CargoFlowHigh4xxRate
+          expr: |
+            rate(nginx_ingress_controller_requests{
+              status=~"4..",
+              ingress=~"cargoflow-.*"
+            }[5m])
+            /
+            rate(nginx_ingress_controller_requests{
+              ingress=~"cargoflow-.*"
+            }[5m]) > 0.10
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "HTTP 4xx rate exceeded 10%"
+            description: "4xx error rate is {{ $value | humanizePercentage }}. Check for auth issues or bad API calls."
+
+        - alert: CargoFlowHighLatency
+          expr: |
+            histogram_quantile(0.99,
+              rate(nginx_ingress_controller_request_duration_seconds_bucket{
+                ingress=~"cargoflow-.*"
+              }[5m])
+            ) > 2
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "P99 request latency > 2 seconds"
+            description: "P99 latency is {{ $value }}s for CargoFlow ingress. Check backend performance."
+
+    - name: cargoflow.scaling
+      interval: 60s
+      rules:
+        - alert: CargoFlowHPAAtMaxReplicas
+          expr: |
+            kube_horizontalpodautoscaler_status_current_replicas{
+              namespace="default",
+              horizontalpodautoscaler=~".*-hpa"
+            }
+            ==
+            kube_horizontalpodautoscaler_spec_max_replicas{
+              namespace="default",
+              horizontalpodautoscaler=~".*-hpa"
+            }
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "HPA has reached maximum replicas"
+            description: "HPA {{ $labels.horizontalpodautoscaler }} is at max replicas ({{ $value }}). Consider increasing maxReplicas or optimizing the service."
+
+    - name: cargoflow.nodes
+      interval: 60s
+      rules:
+        - alert: AKSNodeHighCPU
+          expr: |
+            100 - (avg by(node) (
+              rate(node_cpu_seconds_total{mode="idle"}[5m])
+            ) * 100) > 90
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "AKS node CPU > 90%"
+            description: "Node {{ $labels.node }} CPU utilization is {{ $value }}%."
+
+        - alert: AKSNodeHighMemory
+          expr: |
+            (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100 > 90
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "AKS node memory > 90%"
+            description: "Node {{ $labels.node }} memory usage is {{ $value }}%."
