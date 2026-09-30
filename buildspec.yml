@@ -1,0 +1,64 @@
+# buildspec.yml — AWS CodeBuild CI/CD spec for CargoFlow
+# This replaces the Jenkinsfile. CodeBuild runs this automatically
+# on every push to the main branch.
+#
+# What it does:
+#   1. Logs into Amazon ECR
+#   2. Builds Docker images for all 3 services
+#   3. Pushes images to ECR (tagged with git commit hash)
+#   4. Updates your EKS cluster to roll out the new images
+#
+# Environment variables are injected by Terraform (see modules/codepipeline/main.tf)
+
+version: 0.2
+
+phases:
+
+  # ── PRE-BUILD: log into ECR ──────────────────────────────────────────────
+  pre_build:
+    commands:
+      - echo "=== Logging into Amazon ECR ==="
+      - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com
+      - IMAGE_TAG=$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c1-8)
+      - echo "=== Image tag will be $IMAGE_TAG ==="
+
+  # ── BUILD: build all 3 Docker images ────────────────────────────────────
+  build:
+    commands:
+      - echo "=== Building cargoflow-backend ==="
+      - docker build -t $ECR_BACKEND_URL:$IMAGE_TAG -t $ECR_BACKEND_URL:latest ./backend
+
+      - echo "=== Building cargoflow-customer-portal ==="
+      - docker build -t $ECR_CUSTOMER_PORTAL_URL:$IMAGE_TAG -t $ECR_CUSTOMER_PORTAL_URL:latest ./customer-portal
+
+      - echo "=== Building cargoflow-owner-portal ==="
+      - docker build -t $ECR_OWNER_PORTAL_URL:$IMAGE_TAG -t $ECR_OWNER_PORTAL_URL:latest ./owner-portal
+
+  # ── POST-BUILD: push images, then update EKS ────────────────────────────
+  post_build:
+    commands:
+      # Push all images with both the commit-hash tag and :latest
+      - echo "=== Pushing images to ECR ==="
+      - docker push $ECR_BACKEND_URL:$IMAGE_TAG
+      - docker push $ECR_BACKEND_URL:latest
+      - docker push $ECR_CUSTOMER_PORTAL_URL:$IMAGE_TAG
+      - docker push $ECR_CUSTOMER_PORTAL_URL:latest
+      - docker push $ECR_OWNER_PORTAL_URL:$IMAGE_TAG
+      - docker push $ECR_OWNER_PORTAL_URL:latest
+
+      # Configure kubectl to talk to the EKS cluster
+      - echo "=== Connecting kubectl to EKS ==="
+      - aws eks update-kubeconfig --region $AWS_DEFAULT_REGION --name $CLUSTER_NAME
+
+      # Update the image tag in each deployment so Kubernetes pulls the new image
+      - echo "=== Deploying to EKS ==="
+      - kubectl set image deployment/cargoflow-backend backend=$ECR_BACKEND_URL:$IMAGE_TAG
+      - kubectl set image deployment/cargoflow-customer-portal customer-portal=$ECR_CUSTOMER_PORTAL_URL:$IMAGE_TAG
+      - kubectl set image deployment/cargoflow-owner-portal owner-portal=$ECR_OWNER_PORTAL_URL:$IMAGE_TAG
+
+      # Wait for rolling updates to complete (timeout 3 min)
+      - kubectl rollout status deployment/cargoflow-backend --timeout=3m
+      - kubectl rollout status deployment/cargoflow-customer-portal --timeout=3m
+      - kubectl rollout status deployment/cargoflow-owner-portal --timeout=3m
+
+      - echo "=== Deploy complete! All 3 services updated to $IMAGE_TAG ==="
