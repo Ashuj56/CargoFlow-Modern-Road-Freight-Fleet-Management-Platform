@@ -25,7 +25,7 @@ Thumbs.db
 
 # ── Terraform ────────────────────────────────
 # terraform.tfvars holds your real secrets — NEVER commit it
-terraform/terraform.tfvars
+terraform/terraform.tfvars.example
 terraform/.terraform/
 terraform/.terraform.lock.hcl
 terraform/terraform.tfstate
