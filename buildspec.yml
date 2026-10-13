@@ -1,15 +1,3 @@
-# buildspec.yml — AWS CodeBuild CI/CD spec for CargoFlow
-# This replaces the Jenkinsfile. CodeBuild runs this automatically
-# on every push to the main branch.
-#
-# What it does:
-#   1. Logs into Amazon ECR
-#   2. Builds Docker images for all 3 services
-#   3. Pushes images to ECR (tagged with git commit hash)
-#   4. Updates your EKS cluster to roll out the new images
-#
-# Environment variables are injected by Terraform (see modules/codepipeline/main.tf)
-
 version: 0.2
 
 phases:
