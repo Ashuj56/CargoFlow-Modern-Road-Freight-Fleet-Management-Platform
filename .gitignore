@@ -30,3 +30,7 @@ terraform/.terraform.lock.hcl
 terraform/terraform.tfstate
 terraform/terraform.tfstate.backup
 terraform/crash.log
+
+implementation_plan.md 
+Questions.md
+
