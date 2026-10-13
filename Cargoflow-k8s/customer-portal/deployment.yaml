@@ -1,9 +1,9 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: cargoflow-owner-portal
+  name: cargoflow-customer-portal
   labels:
-    app: cargoflow-owner-portal
+    app: cargoflow-customer-portal
 spec:
   replicas: 2
   strategy:
@@ -13,23 +13,23 @@ spec:
       maxUnavailable: 0
   selector:
     matchLabels:
-      app: cargoflow-owner-portal
+      app: cargoflow-customer-portal
   template:
     metadata:
       labels:
-        app: cargoflow-owner-portal
+        app: cargoflow-customer-portal
     spec:
       containers:
-        - name: owner-portal
-          image: cargoflow-owner-portal:latest
+        - name: customer-portal
+          image: <ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/cargoflow-customer-portal:latest
           imagePullPolicy: IfNotPresent
           ports:
-            - containerPort: 3001
+            - containerPort: 3000
               name: http
               protocol: TCP
           envFrom:
             - configMapRef:
-                name: owner-portal-config
+                name: customer-portal-config
           resources:
             requests:
               cpu: "50m"
@@ -40,15 +40,15 @@ spec:
           livenessProbe:
             httpGet:
               path: /
-              port: 3001
+              port: 3000
             initialDelaySeconds: 15
             periodSeconds: 10
-            timeoutSeconds: 5
+            timeoutSeconds: 10
             failureThreshold: 3
           readinessProbe:
             httpGet:
               path: /
-              port: 3001
+              port: 3000
             initialDelaySeconds: 5
             periodSeconds: 5
             timeoutSeconds: 3

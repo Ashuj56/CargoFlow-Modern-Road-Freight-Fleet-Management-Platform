@@ -27,15 +27,15 @@ resource "helm_release" "argocd" {
 locals {
   cargoflow_apps = {
     "cargoflow-backend" = {
-      path      = "backend/k8s"          
+      path      = "backend"          
       namespace = "default"
     }
     "cargoflow-customer-portal" = {
-      path      = "customer-portal/k8s"
+      path      = "customer-portal"
       namespace = "default"
     }
     "cargoflow-owner-portal" = {
-      path      = "owner-portal/k8s"
+      path      = "owner-portal"
       namespace = "default"
     }
   }

@@ -31,6 +31,12 @@ terraform/terraform.tfstate
 terraform/terraform.tfstate.backup
 terraform/crash.log
 
+# Bootstrap module — local state (intentionally local, never remote)
+terraform/bootstrap/terraform.tfstate
+terraform/bootstrap/terraform.tfstate.backup
+terraform/bootstrap/.terraform/
+terraform/bootstrap/.terraform.lock.hcl
+
 implementation_plan.md 
 Questions.md
 

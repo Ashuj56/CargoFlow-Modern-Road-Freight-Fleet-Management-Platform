@@ -18,14 +18,9 @@ output "redis_endpoint" {
   value       = module.redis.redis_endpoint
 }
 
-output "pipeline_console_url" {
-  description = "Open this URL to watch your CI/CD pipeline run"
-  value       = module.codepipeline.pipeline_console_url
-}
-
-output "github_connection_arn" {
-  description = "⚠️  After apply: go to AWS Console → Developer Tools → Connections and authorize this connection"
-  value       = module.codepipeline.github_connection_arn
+output "argocd_apps" {
+  description = "ArgoCD Application names — check sync status with: kubectl get application -n argocd"
+  value       = module.argocd.argocd_app_names
 }
 
 output "cloudwatch_url" {

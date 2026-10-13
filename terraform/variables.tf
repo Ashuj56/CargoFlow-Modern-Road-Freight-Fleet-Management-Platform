@@ -10,18 +10,7 @@ variable "cluster_name" {
   default     = "cargoflow-eks"
 }
 
-variable "github_repo" {
-  description = "Your GitHub repo in format: username/repo-name  e.g. ashuj56/CargoFlow"
-  type        = string
-}
 
-variable "github_branch" {
-  description = "Git branch that triggers the CI pipeline"
-  type        = string
-  default     = "main"
-}
-
-# ─── SECRETS (store in terraform.tfvars — never commit to Git) ───
 
 variable "mongodb_uri" {
   description = "MongoDB Atlas connection string"
@@ -51,4 +40,10 @@ variable "gmail_app_password" {
   description = "Gmail App Password (16-char, generated in Google Account settings)"
   type        = string
   sensitive   = true
+}
+
+variable "gitops_repo_url" {
+  description = "HTTPS URL of the GitOps k8s manifests repo watched by ArgoCD"
+  type        = string
+  default     = "https://github.com/Ashuj56/CargoFlow-k8s"
 }

@@ -97,17 +97,11 @@ module "cloudwatch" {
 
   depends_on = [module.eks]
 }
-
-module "codepipeline" {
-  source = "./modules/codepipeline"
-
-  cluster_name        = var.cluster_name
-  aws_region          = var.aws_region
-  github_repo         = var.github_repo
-  github_branch       = var.github_branch
-  ecr_repository_urls = module.ecr.repository_urls
-
-  depends_on = [module.ecr, module.eks]
+module "argocd" {
+  source          = "./modules/argocd"
+  cluster_name    = var.cluster_name
+  gitops_repo_url = var.gitops_repo_url
+  depends_on      = [module.eks]
 }
 
 resource "kubernetes_secret" "backend_secrets" {
