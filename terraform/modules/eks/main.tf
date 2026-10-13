@@ -1,12 +1,5 @@
-# ─────────────────────────────────────────────
-# DATA: get current AWS account ID
-# ─────────────────────────────────────────────
 data "aws_caller_identity" "current" {}
 
-# ─────────────────────────────────────────────
-# IAM ROLE — EKS Control Plane
-# AWS needs this role to manage the cluster on your behalf
-# ─────────────────────────────────────────────
 resource "aws_iam_role" "eks_cluster" {
   name = "${var.cluster_name}-cluster-role"
 
@@ -25,9 +18,6 @@ resource "aws_iam_role_policy_attachment" "eks_cluster_policy" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonEKSClusterPolicy"
 }
 
-# ─────────────────────────────────────────────
-# EKS CLUSTER
-# ─────────────────────────────────────────────
 resource "aws_eks_cluster" "main" {
   name     = var.cluster_name
   version  = "1.30"
@@ -36,11 +26,10 @@ resource "aws_eks_cluster" "main" {
   vpc_config {
     subnet_ids              = concat(var.private_subnet_ids, var.public_subnet_ids)
     security_group_ids      = [var.node_sg_id]
-    endpoint_public_access  = true   # lets you run kubectl from your laptop
+    endpoint_public_access  = true   
     endpoint_private_access = true
   }
 
-  # Enable CloudWatch logging for the control plane
   enabled_cluster_log_types = ["api", "audit", "authenticator", "controllerManager", "scheduler"]
 
   depends_on = [aws_iam_role_policy_attachment.eks_cluster_policy]
@@ -48,9 +37,6 @@ resource "aws_eks_cluster" "main" {
   tags = { Name = var.cluster_name }
 }
 
-# ─────────────────────────────────────────────
-# IAM ROLE — Worker Nodes
-# ─────────────────────────────────────────────
 resource "aws_iam_role" "eks_nodes" {
   name = "${var.cluster_name}-node-role"
 
@@ -64,7 +50,6 @@ resource "aws_iam_role" "eks_nodes" {
   })
 }
 
-# These 3 policies are the minimum required for managed node groups
 resource "aws_iam_role_policy_attachment" "eks_worker_node" {
   role       = aws_iam_role.eks_nodes.name
   policy_arn = "arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy"
@@ -80,15 +65,11 @@ resource "aws_iam_role_policy_attachment" "eks_ecr_read" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
 }
 
-# CloudWatch agent needs this to ship metrics/logs
 resource "aws_iam_role_policy_attachment" "eks_cloudwatch" {
   role       = aws_iam_role.eks_nodes.name
   policy_arn = "arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy"
 }
 
-# ─────────────────────────────────────────────
-# MANAGED NODE GROUP — 2 × t3.micro
-# ─────────────────────────────────────────────
 resource "aws_eks_node_group" "main" {
   cluster_name    = aws_eks_cluster.main.name
   node_group_name = "${var.cluster_name}-nodes"
@@ -102,11 +83,11 @@ resource "aws_eks_node_group" "main" {
   scaling_config {
     desired_size = 2
     min_size     = 2
-    max_size     = 5   # HPA can scale up to 5 nodes
+    max_size     = 5   
   }
 
   update_config {
-    max_unavailable = 1   # rolling update — keeps 1 node always up
+    max_unavailable = 1   
   }
 
   depends_on = [
@@ -118,10 +99,7 @@ resource "aws_eks_node_group" "main" {
   tags = { Name = "${var.cluster_name}-nodes" }
 }
 
-# ─────────────────────────────────────────────
-# OIDC PROVIDER — required for IRSA (IAM Roles for Service Accounts)
-# This lets pods assume IAM roles without storing AWS keys in secrets
-# ─────────────────────────────────────────────
+
 data "tls_certificate" "eks" {
   url = aws_eks_cluster.main.identity[0].oidc[0].issuer
 }
@@ -132,11 +110,6 @@ resource "aws_iam_openid_connect_provider" "eks" {
   url             = aws_eks_cluster.main.identity[0].oidc[0].issuer
 }
 
-# ─────────────────────────────────────────────
-# AWS LOAD BALANCER CONTROLLER — creates the ALB from Kubernetes Ingress
-# ─────────────────────────────────────────────
-
-# IAM policy downloaded from AWS (official policy document)
 data "http" "alb_controller_policy" {
   url = "https://raw.githubusercontent.com/kubernetes-sigs/aws-load-balancer-controller/v2.7.2/docs/install/iam_policy.json"
 }
@@ -146,7 +119,7 @@ resource "aws_iam_policy" "alb_controller" {
   policy = data.http.alb_controller_policy.response_body
 }
 
-# IRSA role — the ALB controller pod assumes this role
+
 resource "aws_iam_role" "alb_controller" {
   name = "${var.cluster_name}-alb-controller-role"
 
@@ -173,7 +146,6 @@ resource "aws_iam_role_policy_attachment" "alb_controller" {
   policy_arn = aws_iam_policy.alb_controller.arn
 }
 
-# Install ALB controller via Helm
 resource "helm_release" "alb_controller" {
   name       = "aws-load-balancer-controller"
   repository = "https://aws.github.io/eks-charts"
@@ -201,9 +173,6 @@ resource "helm_release" "alb_controller" {
   depends_on = [aws_eks_node_group.main]
 }
 
-# ─────────────────────────────────────────────
-# METRICS SERVER — required for HPA (kubectl top pods)
-# ─────────────────────────────────────────────
 resource "helm_release" "metrics_server" {
   name       = "metrics-server"
   repository = "https://kubernetes-sigs.github.io/metrics-server/"

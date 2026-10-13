@@ -1,7 +1,4 @@
-# ─────────────────────────────────────────────
-# ELASTICACHE SUBNET GROUP
-# Tells ElastiCache which private subnets it can use
-# ─────────────────────────────────────────────
+
 resource "aws_elasticache_subnet_group" "main" {
   name       = "${var.cluster_name}-redis-subnet-group"
   subnet_ids = var.private_subnet_ids
@@ -9,10 +6,7 @@ resource "aws_elasticache_subnet_group" "main" {
   tags = { Name = "${var.cluster_name}-redis-subnet-group" }
 }
 
-# ─────────────────────────────────────────────
-# ELASTICACHE CLUSTER — Single node Redis
-# cache.t2.micro is FREE TIER eligible (750 hrs/month)
-# ─────────────────────────────────────────────
+
 resource "aws_elasticache_cluster" "redis" {
   cluster_id           = "${var.cluster_name}-redis"
   engine               = "redis"
@@ -25,7 +19,7 @@ resource "aws_elasticache_cluster" "redis" {
   subnet_group_name  = aws_elasticache_subnet_group.main.name
   security_group_ids = [var.redis_sg_id]
 
-  # Automatic minor version upgrades (safe)
+ 
   auto_minor_version_upgrade = true
 
   tags = { Name = "${var.cluster_name}-redis" }

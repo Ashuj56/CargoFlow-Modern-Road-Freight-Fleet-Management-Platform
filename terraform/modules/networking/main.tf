@@ -1,13 +1,7 @@
-# ─────────────────────────────────────────────
-# DATA: pick 2 availability zones automatically
-# ─────────────────────────────────────────────
 data "aws_availability_zones" "available" {
   state = "available"
 }
 
-# ─────────────────────────────────────────────
-# VPC
-# ─────────────────────────────────────────────
 resource "aws_vpc" "main" {
   cidr_block           = var.vpc_cidr
   enable_dns_support   = true
@@ -18,11 +12,6 @@ resource "aws_vpc" "main" {
   }
 }
 
-# ─────────────────────────────────────────────
-# SUBNETS
-# Public subnets → ALB lives here (faces internet)
-# Private subnets → EKS nodes + Redis live here
-# ─────────────────────────────────────────────
 resource "aws_subnet" "public" {
   count = 2
 
@@ -52,18 +41,12 @@ resource "aws_subnet" "private" {
   }
 }
 
-# ─────────────────────────────────────────────
-# INTERNET GATEWAY — lets public subnets reach the internet
-# ─────────────────────────────────────────────
+
 resource "aws_internet_gateway" "main" {
   vpc_id = aws_vpc.main.id
   tags   = { Name = "${var.cluster_name}-igw" }
 }
 
-# ─────────────────────────────────────────────
-# NAT GATEWAY — lets private-subnet nodes pull images, packages, etc.
-# (1 NAT GW is enough for cost savings — $0.045/hr)
-# ─────────────────────────────────────────────
 resource "aws_eip" "nat" {
   domain = "vpc"
   tags   = { Name = "${var.cluster_name}-nat-eip" }
@@ -71,17 +54,12 @@ resource "aws_eip" "nat" {
 
 resource "aws_nat_gateway" "main" {
   allocation_id = aws_eip.nat.id
-  subnet_id     = aws_subnet.public[0].id   # put NAT GW in first public subnet
+  subnet_id     = aws_subnet.public[0].id   
   tags          = { Name = "${var.cluster_name}-nat" }
 
   depends_on = [aws_internet_gateway.main]
 }
 
-# ─────────────────────────────────────────────
-# ROUTE TABLES
-# ─────────────────────────────────────────────
-
-# Public route table → everything goes to Internet Gateway
 resource "aws_route_table" "public" {
   vpc_id = aws_vpc.main.id
   route {
@@ -113,17 +91,12 @@ resource "aws_route_table_association" "private" {
   route_table_id = aws_route_table.private.id
 }
 
-# ─────────────────────────────────────────────
-# SECURITY GROUPS
-# ─────────────────────────────────────────────
 
-# Security group for EKS worker nodes
 resource "aws_security_group" "eks_nodes" {
   name        = "${var.cluster_name}-eks-nodes-sg"
   description = "Security group for EKS worker nodes"
   vpc_id      = aws_vpc.main.id
 
-  # Allow all outbound (nodes need to pull images, call APIs, etc.)
   egress {
     from_port   = 0
     to_port     = 0
@@ -135,8 +108,6 @@ resource "aws_security_group" "eks_nodes" {
   tags = { Name = "${var.cluster_name}-eks-nodes-sg" }
 }
 
-# Security group for ElastiCache Redis
-# Only EKS nodes can talk to Redis on port 6379
 resource "aws_security_group" "redis" {
   name        = "${var.cluster_name}-redis-sg"
   description = "Allow Redis access from EKS nodes only"

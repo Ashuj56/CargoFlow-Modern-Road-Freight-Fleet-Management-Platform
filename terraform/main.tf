@@ -1,6 +1,3 @@
-# ─────────────────────────────────────────────
-# PROVIDERS
-# ─────────────────────────────────────────────
 terraform {
   required_version = ">= 1.6"
 
@@ -32,8 +29,7 @@ provider "aws" {
   region = var.aws_region
 }
 
-# Kubernetes and Helm providers need the EKS cluster to exist first.
-# They authenticate using the cluster's API endpoint.
+
 provider "kubernetes" {
   host                   = module.eks.cluster_endpoint
   cluster_ca_certificate = base64decode(module.eks.cluster_certificate_authority)
@@ -58,28 +54,17 @@ provider "helm" {
   }
 }
 
-# ─────────────────────────────────────────────
-# MODULE: NETWORKING
-# Creates VPC, subnets, IGW, NAT, security groups
-# ─────────────────────────────────────────────
+
 module "networking" {
   source       = "./modules/networking"
   cluster_name = var.cluster_name
   aws_region   = var.aws_region
 }
 
-# ─────────────────────────────────────────────
-# MODULE: ECR
-# Creates 3 container image repositories
-# ─────────────────────────────────────────────
 module "ecr" {
   source = "./modules/ecr"
 }
 
-# ─────────────────────────────────────────────
-# MODULE: EKS
-# Creates cluster, node group, ALB controller, metrics server
-# ─────────────────────────────────────────────
 module "eks" {
   source = "./modules/eks"
 
@@ -93,10 +78,7 @@ module "eks" {
   depends_on = [module.networking]
 }
 
-# ─────────────────────────────────────────────
-# MODULE: REDIS
-# ElastiCache cache.t2.micro (free tier)
-# ─────────────────────────────────────────────
+
 module "redis" {
   source = "./modules/redis"
 
@@ -107,10 +89,6 @@ module "redis" {
   depends_on = [module.networking]
 }
 
-# ─────────────────────────────────────────────
-# MODULE: CLOUDWATCH
-# Container Insights + log groups
-# ─────────────────────────────────────────────
 module "cloudwatch" {
   source = "./modules/cloudwatch"
 
@@ -120,10 +98,6 @@ module "cloudwatch" {
   depends_on = [module.eks]
 }
 
-# ─────────────────────────────────────────────
-# MODULE: CODEPIPELINE
-# GitHub → CodeBuild → ECR → EKS rolling deploy
-# ─────────────────────────────────────────────
 module "codepipeline" {
   source = "./modules/codepipeline"
 
@@ -136,10 +110,6 @@ module "codepipeline" {
   depends_on = [module.ecr, module.eks]
 }
 
-# ─────────────────────────────────────────────
-# KUBERNETES SECRETS — inject app secrets into the cluster
-# The backend pod reads these via envFrom: secretRef
-# ─────────────────────────────────────────────
 resource "kubernetes_secret" "backend_secrets" {
   metadata {
     name      = "backend-secrets"
@@ -152,17 +122,14 @@ resource "kubernetes_secret" "backend_secrets" {
     JWT_REFRESH_SECRET = var.jwt_refresh_secret
     GMAIL_USER         = var.gmail_user
     GMAIL_APP_PASSWORD = var.gmail_app_password
-    # Redis URL auto-filled from ElastiCache output
     UPSTASH_REDIS_REST_URL = "redis://${module.redis.redis_endpoint}:${module.redis.redis_port}"
-    UPSTASH_REDIS_REST_TOKEN = ""   # not needed for plain Redis (was for Upstash)
+    UPSTASH_REDIS_REST_TOKEN = ""  
   }
 
   depends_on = [module.eks]
 }
 
-# ─────────────────────────────────────────────
-# KUBERNETES CONFIGMAPS — non-secret app config
-# ─────────────────────────────────────────────
+
 resource "kubernetes_config_map" "backend_config" {
   metadata {
     name      = "backend-config"

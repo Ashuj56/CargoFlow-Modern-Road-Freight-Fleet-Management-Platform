@@ -1,6 +1,3 @@
-# ─────────────────────────────────────────────
-# ECR REPOSITORIES — one per service
-# ─────────────────────────────────────────────
 resource "aws_ecr_repository" "repos" {
   for_each = toset(var.repository_names)
 
@@ -14,11 +11,7 @@ resource "aws_ecr_repository" "repos" {
   tags = { Name = each.value }
 }
 
-# ─────────────────────────────────────────────
-# LIFECYCLE POLICY — keep costs low
-# Keeps only the last 10 tagged images per repo.
-# Untagged (dangling) images are deleted after 1 day.
-# ─────────────────────────────────────────────
+
 resource "aws_ecr_lifecycle_policy" "repos" {
   for_each   = aws_ecr_repository.repos
   repository = each.value.name
